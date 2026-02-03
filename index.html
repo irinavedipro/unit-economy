@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Unit Profit Simulator v9.93 Fixed</title>
+    <title>Unit Profit Simulator v10.5 Fixed</title>
     
     <!-- React & Babel -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
@@ -94,9 +94,47 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo, useId } = React;
 
-        // --- 1. ICONS ---
-        const Icon = ({ path, className, size = 24, fill = "none" }) => (
-            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{path}</svg>
+        // --- CONSTANTS ---
+        const DEFINITIONS = {
+            CPL: { 
+                title: "CPL (Цена заявки)", 
+                text: "🎓 Официально:\nCost Per Lead — стоимость привлечения одной заявки в рекламном кабинете.\n\n🗣 По-простому:\nЦифра, которую вы видите в кабинете Яндекса/ВК. Это «голая» стоимость телефона клиента, без учета зарплат тех, кто эту рекламу настраивал." 
+            },
+            RealCPL: { 
+                title: "Реальный CPL", 
+                text: "🎓 Официально:\nFully Loaded CPL = (Рекламный бюджет + ФОТ маркетинга) / Количество лидов.\n\n🗣 По-простому:\nЧестная цена звонка для вашего кармана. Если вы платите спецу 50к, а заявок мало — этот показатель будет в разы выше обычного CPL. Это то, сколько вы реально платите за возможность поговорить с клиентом." 
+            },
+            DRR: { 
+                title: "ДРР (Доля Рекламы)", 
+                text: "🎓 Официально:\nДоля Рекламных Расходов = (Бюджет на рекламу / Выручка) × 100%.\n\n🗣 По-простому:\nКакой процент от полученных денег вы тут же отдали рекламной площадке." 
+            },
+            TotalDRR: { 
+                title: "ДРР (Итоговый)", 
+                text: "🎓 Официально:\nTotal Marketing Ratio = (Бюджет + Зарплаты маркетинга) / Выручка.\n\n🗣 По-простому:\nСамая важная цифра. Показывает, какую часть выручки съедает весь ваш отдел маркетинга. Если этот показатель растет, а прибыль падает — вы кормите дармоедов." 
+            },
+            MTP: { 
+                title: "Доля маркетинга в прибыли", 
+                text: "🎓 Официально:\nMarketing To Profit Ratio. Отношение маркетинговых затрат к операционной прибыли до вычета маркетинга.\n\n🗣 По-простому:\nПредставьте пирог вашей прибыли. Этот процент показывает, какой кусок вы отрезаете и отдаете обратно рекламщикам, чтобы этот пирог вообще испекся. Если >50% — вы работаете на маркетологов." 
+            },
+            PBM: { 
+                title: "Прибыль ДО маркетинга", 
+                text: "🎓 Официально:\nОперационная прибыль до вычета расходов на привлечение.\n\n🗣 По-простому:\nДеньги, которые бизнес заработал «сам по себе» (продали минус купили, минус аренда), из которых вы потом оплачиваете банкет под названием «Маркетинг»." 
+            },
+            CAC: { 
+                title: "CAC (Стоимость клиента)", 
+                text: "🎓 Официально:\nCustomer Acquisition Cost. Стоимость привлечения одного платящего клиента.\n\n🗣 По-простому:\nСколько денег вы потратили, чтобы один человек реально купил. Важно, чтобы эта цифра была меньше, чем прибыль с клиента (LTV)." 
+            }
+        };
+
+        const BENCHMARKS = {
+            services: { name: 'Услуги / B2B', cpc: 50, crClick: 2.5, cpl: 2000, cr1: 30, cr2: 15, cr3: 25 },
+            ecommerce: { name: 'Товарка / E-com', cpc: 15, crClick: 5, cpl: 300, cr1: 50, cr2: 60, cr3: 80 },
+            infobiz: { name: 'Инфобиз / Курсы', cpc: 30, crClick: 7.5, cpl: 400, cr1: 40, cr2: 15, cr3: 10 }
+        };
+
+        // --- ICONS ---
+        const Icon = ({ path, className, size = 24 }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{path}</svg>
         );
 
         const Icons = {
@@ -183,6 +221,7 @@
             );
         };
         
+        // --- RESTORED TableInput COMPONENT ---
         const TableInput = ({ value, onChange, placeholder, align = 'left' }) => {
             const [displayValue, setDisplayValue] = useState(formatNum(value));
             useEffect(() => {
@@ -204,21 +243,14 @@
         };
 
         const DefinitionModal = ({ term, onClose }) => {
-            const content = {
-                CPL: { title: "CPL (Цена заявки)", text: "Цифра из рекламного кабинета. \nСколько вы платите Яндексу/ВК за один контакт." },
-                RealCPL: { title: "Реальный CPL", text: "Честная цена. \nМы берем бюджет + зарплату специалиста и делим на количество лидов. \n\nЭто то, во сколько вам НА САМОМ ДЕЛЕ стоит один звонок клиента." },
-                DRR: { title: "ДРР (Доля Рекламы)", text: "Какой процент от выручки вы отдаете обратно в рекламу. \n\nБюджет: Только расходы на кабинет.\nИтоговый: Бюджет + Зарплаты маркетологов." },
-                MTP: { title: "Доля маркетинга в прибыли", text: "Представьте пирог вашей прибыли (до вычета рекламы).\nЭтот показатель говорит, какой кусок от этого пирога вы отрезаете и отдаете обратно рекламщикам и Яндексу, чтобы заработать оставшееся.\n\nЕсли здесь написано «Съедает всю прибыль» — значит, вы потратили на рекламу больше, чем заработали на ней." },
-                CAC: { title: "CAC (Стоимость клиента)", text: "Цена одного ПОКУПАТЕЛЯ. \nСколько денег вы потратили на рекламу, чтобы один человек реально заплатил вам." }
-            };
-            const data = content[term];
+            const data = DEFINITIONS[term];
             if (!data) return null;
             return (
                 <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
                     <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl relative" onClick={e => e.stopPropagation()}>
                         <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><Icons.XCircle size={24} /></button>
                         <div className="flex items-center gap-2 mb-3 text-indigo-600"><Icons.Info size={24} /><h3 className="font-bold text-lg">{data.title}</h3></div>
-                        <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-line">{data.text}</p>
+                        <div className="text-slate-600 text-sm leading-relaxed whitespace-pre-line">{data.text}</div>
                         <button onClick={onClose} className="w-full mt-6 bg-indigo-50 text-indigo-700 py-3 rounded-xl font-bold">Всё понятно</button>
                     </div>
                 </div>
@@ -238,7 +270,7 @@
                         </div>
                         <p className="text-xs text-white/80 leading-relaxed mb-2">
                             Прямо сейчас каждый заказ приносит вам убыток. Вы платите за привлечение клиента больше, чем зарабатываете на нем.
-                            Ваш <span className="term-link text-white font-bold" onClick={() => onShowDefinition('RealCPL')}>Реальный CPL</span> составляет <strong>{formatMoney(Math.round(stats.realCPL))}</strong>.
+                            Ваш <span className="term-link text-white font-bold cursor-pointer" onClick={() => onShowDefinition('RealCPL')}>Реальный CPL</span> составляет <strong>{formatMoney(Math.round(stats.realCPL))}</strong>.
                             <br/><br/>
                             <strong>Вердикт:</strong> Остановите рекламу. Нужно либо поднимать чек, либо чинить конверсию в продажу.
                         </p>
@@ -270,9 +302,9 @@
                             <span className="font-bold text-yellow-100 text-sm">Рабочая модель</span>
                         </div>
                         <p className="text-xs text-white/80 leading-relaxed">
-                            Бизнес приносит деньги. Вы отдаете {share.toFixed(0)}% от своей "грязной" прибыли обратно в маркетинг. Это нормальная плата за рост на конкурентном рынке.
+                            Бизнес приносит деньги. Расходы на рекламу ощутимы, но допустимы для роста.
                             <br/><br/>
-                            <strong>Совет:</strong> Можно аккуратно масштабировать бюджет, но следите за <span className="term-link text-white" onClick={() => onShowDefinition('TotalDRR')}>Итоговым ДРР</span>.
+                            <strong>Совет:</strong> Следите за <span className="term-link text-white cursor-pointer" onClick={() => onShowDefinition('TotalDRR')}>итоговым ДРР</span>.
                         </p>
                     </div>
                 );
@@ -351,42 +383,28 @@
         };
 
         const FunnelVisualizer = ({ stats, cpc, cpl, crClickToLead, crLeadToQual, crQualToMeeting, crMeetingToDeal, avgCheck, onStepClick }) => {
-            const handleStepClick = (stepId) => {
-                let stepData = null;
-                switch(stepId) {
-                    case 'traffic':
-                        stepData = {
-                            id: 'traffic', title: 'Трафик', value: formatNum(stats.clicksNeeded), unit: 'кликов', colorName: 'blue', icon: Icons.Pointer,
-                            metrics: [{label: 'Бюджет', val: formatMoney(stats.adBudget)}, {label: 'Цена клика (CPC)', val: `${cpc} ₽`}, {label: 'Конверсия в лид', val: `${crClickToLead}%`}]
-                        };
-                        break;
-                    case 'leads':
-                        stepData = {
-                            id: 'leads', title: 'Лиды', value: formatNum(stats.leadsNeeded), unit: 'заявок', colorName: 'indigo', icon: Icons.User,
-                            metrics: [{label: 'CPL (Кабинет)', val: `${Math.round(stats.derivedCpl)} ₽`}, {label: 'REAL CPL (С работой)', val: `${Math.round(stats.realCPL)} ₽`}] 
-                        };
-                        break;
-                    case 'qual':
-                        stepData = {
-                            id: 'qual', title: 'Квалифицированные', value: formatNum(stats.qualLeadsNeeded), unit: 'лидов', colorName: 'purple', icon: Icons.CheckSquare,
-                            metrics: [{label: 'Конверсия во встречу', val: `${crQualToMeeting}%`}]
-                        };
-                        break;
-                    case 'meet':
-                        stepData = {
-                            id: 'meet', title: 'Встречи / КП', value: formatNum(stats.meetingsNeeded), unit: 'встреч', colorName: 'fuchsia', icon: Icons.Briefcase,
-                            metrics: [{label: 'Конверсия в сделку', val: `${crMeetingToDeal}%`}]
-                        };
-                        break;
-                    case 'deal':
-                        stepData = {
-                            id: 'deal', title: 'Продажи', value: formatNum(stats.dealsNeeded), unit: 'сделок', colorName: 'emerald', icon: Icons.Wallet,
-                            metrics: [{label: 'Средний чек', val: formatMoney(avgCheck)}, {label: 'Выручка', val: formatMoney(stats.actualRevenue)}]
-                        };
-                        break;
+            const steps = [
+                {
+                    id: 'traffic', title: 'Трафик', value: stats.clicksNeeded, unit: 'кликов', colorName: 'blue', icon: Icons.Pointer, width: '100%',
+                    metrics: [{label: 'Бюджет', val: formatMoney(stats.adBudget)}, {label: 'Цена клика (CPC)', val: `${cpc} ₽`}, {label: 'Конверсия в лид', val: `${crClickToLead}%`}]
+                },
+                {
+                    id: 'leads', title: 'Лиды', value: stats.leadsNeeded, unit: 'заявок', colorName: 'indigo', icon: Icons.User, width: '90%',
+                    metrics: [{label: 'CPL (Кабинет)', val: `${Math.round(stats.derivedCpl)} ₽`}, {label: 'REAL CPL (С работой)', val: `${Math.round(stats.realCPL)} ₽`}]
+                },
+                {
+                    id: 'qual', title: 'Квалифицированные', value: stats.qualLeadsNeeded, unit: 'лидов', colorName: 'purple', icon: Icons.CheckSquare, width: '80%',
+                    metrics: [{label: 'Конверсия во встречу', val: `${crQualToMeeting}%`}]
+                },
+                {
+                    id: 'meet', title: 'Встречи / КП', value: stats.meetingsNeeded, unit: 'встреч', colorName: 'fuchsia', icon: Icons.Briefcase, width: '70%',
+                    metrics: [{label: 'Конверсия в сделку', val: `${crMeetingToDeal}%`}]
+                },
+                {
+                    id: 'deal', title: 'Продажи', value: stats.dealsNeeded, unit: 'сделок', colorName: 'emerald', icon: Icons.Banknote, width: '60%', isLast: true,
+                    metrics: [{label: 'Средний чек', val: formatMoney(avgCheck)}, {label: 'Выручка', val: formatMoney(stats.actualRevenue)}]
                 }
-                if (stepData) onStepClick(stepData);
-            };
+            ];
 
             return (
                 <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm mb-6">
@@ -396,71 +414,36 @@
                     </div>
                     
                     <div className="flex flex-col items-center gap-1">
-                        {/* Layer 1: Traffic */}
-                        <div className="w-full relative flex justify-center group cursor-pointer" onClick={() => handleStepClick('traffic')}>
-                                <div className="funnel-step-shape bg-blue-600 h-14 text-white flex items-center justify-center gap-6 px-4 shadow-md relative z-50 transition-transform active:scale-95 group-hover:scale-105" style={{ width: '100%' }}>
-                                <div className="text-center">
-                                    <div className="text-[9px] uppercase opacity-75 font-bold">Бюджет</div>
-                                    <div className="font-bold text-lg">{formatMoney(stats.adBudget)}</div>
+                        {steps.map((step, index) => (
+                             <div key={step.id} className="w-full relative flex justify-center group cursor-pointer" onClick={() => onStepClick(step)}>
+                                <div className={`funnel-step-shape ${step.isLast ? 'funnel-step-last' : ''} bg-${step.colorName}-600 ${step.isLast ? 'h-16' : 'h-14'} text-white flex items-center justify-center gap-6 px-4 shadow-md relative z-${50-index*10} transition-transform active:scale-95 group-hover:scale-105`} style={{ width: step.width }}>
+                                    <div className="text-center">
+                                        {step.id === 'traffic' ? (
+                                            <>
+                                                <div className="text-[9px] uppercase opacity-75 font-bold">Бюджет</div>
+                                                <div className="font-bold text-lg">{formatMoney(stats.adBudget)}</div>
+                                            </>
+                                        ) : (
+                                            <div className="flex flex-col items-center leading-tight">
+                                                <span className={`font-bold ${step.isLast ? 'text-3xl' : 'text-xl'}`}>{formatNum(step.value)}</span>
+                                                <span className="text-[10px] uppercase opacity-75 font-bold tracking-wider">{step.title}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                     {step.id === 'traffic' && (
+                                        <div className="text-center">
+                                            <div className="text-[9px] uppercase opacity-75 font-bold">Клики</div>
+                                            <div className="font-bold text-lg">{formatNum(stats.clicksNeeded)}</div>
+                                        </div>
+                                    )}
                                 </div>
-                                <div className="text-center">
-                                    <div className="text-[9px] uppercase opacity-75 font-bold">Клики</div>
-                                    <div className="font-bold text-lg">{formatNum(stats.clicksNeeded)}</div>
-                                </div>
+                                {!step.isLast && (
+                                    <div className={`absolute -bottom-3 z-${50-index*10} bg-white rounded-full p-0.5 border border-slate-100 shadow-sm`}>
+                                        <Icons.ArrowDown className="w-3 h-3 text-slate-400 arrow-bounce" />
+                                    </div>
+                                )}
                             </div>
-                            <div className="absolute -bottom-3 z-50 bg-white rounded-full p-0.5 border border-slate-100 shadow-sm">
-                                <Icons.Trash2 className="w-3 h-3 text-slate-400 rotate-180" />
-                            </div>
-                        </div>
-
-                        {/* Layer 2: Leads */}
-                        <div className="w-full relative flex justify-center group cursor-pointer" onClick={() => handleStepClick('leads')}>
-                                <div className="funnel-step-shape bg-indigo-600 h-14 text-white flex items-center justify-center shadow-md relative z-40 transition-transform active:scale-95 group-hover:scale-105" style={{ width: '90%' }}>
-                                <div className="flex flex-col items-center leading-tight">
-                                    <span className="font-bold text-xl">{formatNum(stats.leadsNeeded)}</span>
-                                    <span className="text-[10px] uppercase opacity-75 font-bold tracking-wider">Лиды</span>
-                                </div>
-                            </div>
-                            <div className="absolute -bottom-3 z-40 bg-white rounded-full p-0.5 border border-slate-200 shadow-sm">
-                                <Icons.Trash2 className="w-3 h-3 text-slate-400 rotate-180" />
-                            </div>
-                        </div>
-
-                            {/* Layer 3: Qual */}
-                        <div className="w-full relative flex justify-center group cursor-pointer" onClick={() => handleStepClick('qual')}>
-                                <div className="funnel-step-shape bg-purple-600 h-12 text-white flex items-center justify-center shadow-md relative z-30 transition-transform active:scale-95 group-hover:scale-105" style={{ width: '80%' }}>
-                                <div className="flex flex-col items-center leading-tight">
-                                    <span className="font-bold text-lg">{formatNum(stats.qualLeadsNeeded)}</span>
-                                    <span className="text-[9px] uppercase opacity-80 font-bold tracking-wider">Квалиф.</span>
-                                </div>
-                            </div>
-                            <div className="absolute -bottom-3 z-30 bg-white rounded-full p-0.5 border border-slate-100 shadow-sm">
-                                <Icons.Trash2 className="w-3 h-3 text-slate-400 rotate-180" />
-                            </div>
-                        </div>
-
-                            {/* Layer 4: Meet */}
-                        <div className="w-full relative flex justify-center group cursor-pointer" onClick={() => handleStepClick('meet')}>
-                                <div className="funnel-step-shape bg-fuchsia-600 h-12 text-white flex items-center justify-center shadow-md relative z-20 transition-transform active:scale-95 group-hover:scale-105" style={{ width: '70%' }}>
-                                <div className="flex flex-col items-center leading-tight">
-                                    <span className="font-bold text-lg">{formatNum(stats.meetingsNeeded)}</span>
-                                    <span className="text-[9px] uppercase opacity-80 font-bold tracking-wider">Встречи</span>
-                                </div>
-                            </div>
-                            <div className="absolute -bottom-3 z-20 bg-white rounded-full p-0.5 border border-slate-100 shadow-sm">
-                                <Icons.Trash2 className="w-3 h-3 text-slate-400 rotate-180" />
-                            </div>
-                        </div>
-
-                            {/* Layer 5: Deals */}
-                        <div className="w-full relative flex justify-center group cursor-pointer" onClick={() => handleStepClick('deal')}>
-                                <div className="funnel-step-shape funnel-step-last bg-emerald-500 h-16 text-white flex items-center justify-center shadow-lg relative z-10 transition-transform active:scale-95 group-hover:scale-105" style={{ width: '60%' }}>
-                                <div className="flex flex-col items-center leading-tight">
-                                    <span className="text-[10px] uppercase opacity-90 font-bold mb-0.5 tracking-widest">Продажи</span>
-                                    <span className="text-3xl font-bold">{stats.dealsNeeded}</span>
-                                </div>
-                            </div>
-                        </div>
+                        ))}
                     </div>
                 </div>
             );
@@ -569,9 +552,10 @@
             const [cpl, setCpl] = useState(1000); 
             
             // 3. РАСХОДЫ
-            const [marketingFix, setMarketingFix] = useState(50000); // Оплата специалисту
+            const [marketingFix, setMarketingFix] = useState(50000);
             const [variableExpenses, setVariableExpenses] = useState([
-                { id: 1, name: 'Налоги и комиссии', percent: 6 },
+                { id: 1, name: 'Налог', percent: 6 },
+                { id: 2, name: 'Комиссия', percent: 0 }
             ]);
             const [fixedExpenses, setFixedExpenses] = useState([
                 { id: 1, name: 'ФОТ (Зарплаты)', amount: 50000 },
@@ -606,7 +590,7 @@
                 setCrLeadToQual(60); setCrQualToMeeting(40); setCrMeetingToDeal(30); setCpl(1000);
                 setCpc(25); setCrClickToLead(5);
                 setMarketingFix(50000);
-                setVariableExpenses([{ id: 1, name: 'Налоги и комиссии', percent: 6 }]);
+                setVariableExpenses([{ id: 1, name: 'Налог', percent: 6 }, { id: 2, name: 'Комиссия', percent: 0 }]);
                 setFixedExpenses([{ id: 1, name: 'ФОТ (Зарплаты)', amount: 50000 }, { id: 2, name: 'Офис / Сервисы', amount: 30000 }, { id: 3, name: 'Прочее', amount: 5000 }]);
                 setScaleBudget(0); setActiveBenchmark(null);
             };
@@ -675,17 +659,14 @@
                 // 6. Results
                 const correctNetProfit = grossMarginRub - (marketingTotalCost + totalFixedPeriod + totalVariableCosts);
                 
-                // Fixed logic for Marketing Share of Profit
-                // Logic: How much of the "Operational Profit before Ad Spend" is consumed by Marketing?
-                // OpProfit = NetProfit + MarketingTotalCost.
-                // Share = MarketingTotalCost / OpProfit.
-                // If OpProfit <= 0, then we are in deep loss, share is > 100% or undefined.
-                const opProfit = correctNetProfit + marketingTotalCost;
+                // Profit Before Marketing
+                const profitBeforeMarketing = grossMarginRub - totalFixedPeriod - totalVariableCosts;
+                
                 let marketingShareOfProfit = 0;
                 let mtpStatus = 'normal'; 
 
-                if (opProfit > 0) {
-                     marketingShareOfProfit = (marketingTotalCost / opProfit) * 100;
+                if (profitBeforeMarketing > 0) {
+                     marketingShareOfProfit = (marketingTotalCost / profitBeforeMarketing) * 100;
                      if (marketingShareOfProfit > 100) mtpStatus = 'critical'; 
                 } else {
                      mtpStatus = 'no_profit'; 
@@ -726,9 +707,6 @@
                     if (val < 15) return 'text-orange-600 bg-orange-50 border-orange-100';
                     return 'text-red-600 bg-red-50 border-red-100';
                 };
-                
-                // Profit Before Marketing
-                const profitBeforeMarketing = grossMarginRub - totalFixedPeriod - totalVariableCosts;
 
                 return {
                     dealsNeeded, actualRevenue, cogs, grossMarginRub,
@@ -747,7 +725,9 @@
             const stats = calculateEconomics();
             const isProfitable = stats.netProfit > 0;
 
-            useEffect(() => { if (scaleBudget === 0 && stats.adBudget > 0) setScaleBudget(stats.adBudget); }, [stats.adBudget]);
+            useEffect(() => { 
+                if (scaleBudget === 0 && stats.adBudget > 0) setScaleBudget(stats.adBudget); 
+            }, [stats.adBudget]);
 
             const scaleStats = useMemo(() => {
                 const scaledLeads = Math.ceil(scaleBudget / (mode === 'pro' ? (cpc * (100/crClickToLead)) : cpl));
@@ -789,7 +769,7 @@
                     {showDefinitions && <DefinitionModal term={showDefinitions} onClose={() => setShowDefinitions(null)} />}
                     {activeFunnelStep && <FunnelDetailModal step={activeFunnelStep} onClose={() => setActiveFunnelStep(null)} />}
 
-                    <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm"><div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between"><div className="flex items-center gap-3"><div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white shadow-md"><Icons.Calculator size={16} /></div><div className="leading-none"><h1 className="text-base font-bold text-slate-900">Unit Profit</h1><span className="text-[10px] text-slate-500 font-medium">Симулятор прибыли v9.93</span></div></div><div className="flex items-center gap-3"><div className="flex bg-slate-100 rounded-lg p-1"><button onClick={() => setMode('simple')} className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${mode === 'simple' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>Новичок</button><button onClick={() => setMode('pro')} className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${mode === 'pro' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>PRO</button></div><button onClick={resetAll} className="p-2 text-slate-400 hover:text-slate-600"><Icons.RefreshCw size={18} /></button></div></div></header>
+                    <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm"><div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between"><div className="flex items-center gap-3"><div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white shadow-md"><Icons.Calculator size={16} /></div><div className="leading-none"><h1 className="text-base font-bold text-slate-900">Unit Profit</h1><span className="text-[10px] text-slate-500 font-medium">Симулятор прибыли v10.4 Final</span></div></div><div className="flex items-center gap-3"><div className="flex bg-slate-100 rounded-lg p-1"><button onClick={() => setMode('simple')} className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${mode === 'simple' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>Новичок</button><button onClick={() => setMode('pro')} className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${mode === 'pro' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>PRO</button></div><button onClick={resetAll} className="p-2 text-slate-400 hover:text-slate-600"><Icons.RefreshCw size={18} /></button></div></div></header>
                     <main className="max-w-6xl mx-auto px-2 sm:px-4 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
                         <div className="lg:col-span-7 space-y-4">
                             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 card-shadow">
@@ -845,6 +825,7 @@
 
                             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 card-shadow">
                                 <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-100"><Icons.Sliders size={18} className="text-blue-600" /><h2 className="font-bold text-slate-800">2. Воронка продаж</h2></div>
+                                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-6 relative overflow-hidden"><div className="relative z-10"><div className="flex gap-2 items-start mb-3"><Icons.Info className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" /><h3 className="font-bold text-blue-900 text-sm">Не знаете свои цифры?</h3></div><div className="grid grid-cols-3 gap-2">{Object.entries(BENCHMARKS).map(([key, val]) => (<button key={key} onClick={() => applyBenchmark(key)} className={`flex flex-col items-center justify-center p-2 rounded-lg border text-center transition-all ${activeBenchmark === key ? 'bg-white border-blue-500 shadow-md ring-1 ring-blue-500' : 'bg-white/60 border-blue-200 hover:bg-white'}`}><span className={`mb-1 ${activeBenchmark === key ? 'text-blue-600' : 'text-slate-400'}`}>{key === 'services' && <Icons.Briefcase size={16} />}{key === 'ecommerce' && <Icons.ShoppingBag size={16} />}{key === 'infobiz' && <Icons.GraduationCap size={16} />}</span><span className={`text-[10px] font-bold leading-tight ${activeBenchmark === key ? 'text-blue-800' : 'text-slate-500'}`}>{val.name}</span></button>))}</div></div></div>
                                 <div className="space-y-4">
                                     {mode === 'pro' && (
                                         <div className="grid grid-cols-1 gap-4">
@@ -873,7 +854,7 @@
                                 <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-100"><Icons.Banknote size={18} className="text-emerald-600" /><h2 className="font-bold text-slate-800">3. Расходы</h2></div>
                                 
                                 <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 mb-6">
-                                    <div className="text-xs font-bold text-indigo-800 mb-2 uppercase tracking-wider">Маркетинг: Подрядчики (Фикс)</div>
+                                    <div className="text-xs font-bold text-indigo-800 mb-2 uppercase tracking-wider">ЗП Маркетолога (Фикс)</div>
                                     <FormattedInput label="" value={marketingFix} onChange={setMarketingFix} suffix="₽" />
                                     <div className="text-[10px] text-indigo-600 opacity-80">Зарплаты таргетологов, агентств и т.д. Влияет на реальный CPL.</div>
                                 </div>
@@ -881,21 +862,15 @@
                                 <div className="mb-6">
                                     <div className="flex justify-between items-center mb-3">
                                         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Переменные (% от выручки)</label>
-                                        <button onClick={addVariableExpense} className="text-indigo-600 hover:bg-indigo-50 p-1 rounded transition-colors">
-                                            <Icons.Plus size={16} />
-                                        </button>
                                     </div>
-                                    <div className="space-y-3">
+                                    <div className="grid grid-cols-2 gap-3">
                                         {variableExpenses.map((expense) => (
-                                            <div key={expense.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex gap-2 items-center">
-                                                <input type="text" value={expense.name} placeholder="Название" onChange={(e) => updateVariableExpense(expense.id, 'name', e.target.value)} className="flex-1 bg-transparent border-none p-0 text-sm font-bold text-slate-700 focus:ring-0 placeholder:text-slate-300" />
-                                                <div className="relative w-20">
-                                                    <input type="number" value={expense.percent} placeholder="0" onChange={(e) => updateVariableExpense(expense.id, 'percent', Number(e.target.value))} className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-sm text-right focus:ring-1 focus:ring-indigo-500 outline-none" />
-                                                    <span className="absolute right-6 top-1 text-slate-400 text-xs">%</span>
+                                            <div key={expense.id} className="bg-slate-50 p-2 rounded-xl border border-slate-100 flex items-center justify-between">
+                                                <span className="text-sm font-bold text-slate-700 ml-1">{expense.name}</span>
+                                                <div className="relative w-16">
+                                                    <input type="number" value={expense.percent} placeholder="0" onChange={(e) => updateVariableExpense(expense.id, 'percent', Number(e.target.value))} className="w-full bg-white border border-slate-200 rounded-lg px-1 py-1 text-sm text-right focus:ring-1 focus:ring-indigo-500 outline-none" />
+                                                    <span className="absolute right-4 top-1 text-slate-400 text-xs">%</span>
                                                 </div>
-                                                <button onClick={() => removeVariableExpense(expense.id)} className="text-slate-300 hover:text-red-500 p-1">
-                                                    <Icons.Trash2 size={16} />
-                                                </button>
                                             </div>
                                         ))}
                                     </div>
@@ -982,7 +957,7 @@
                                             <div className="grid grid-cols-2 gap-4 text-xs mb-3">
                                                 <div className="cursor-pointer hover:bg-white/5 rounded p-1" onClick={() => setShowDefinitions('CPL')}>
                                                     <div className="opacity-50 mb-0.5 flex items-center gap-1 term-link">Цена в отчете <Icons.HelpCircle size={8}/></div>
-                                                    <div className="font-bold text-white">{Math.round(stats.derivedCpl)} ₽</div>
+                                                    <div className="font-bold text-white text-lg">{Math.round(stats.derivedCpl)} ₽</div>
                                                 </div>
                                                 <div className="cursor-pointer hover:bg-white/5 rounded p-1" onClick={() => setShowDefinitions('RealCPL')}>
                                                     <div className="opacity-50 mb-0.5 flex items-center gap-1 term-link">Цена для бизнеса <Icons.HelpCircle size={8}/></div>
